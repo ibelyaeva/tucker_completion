@@ -64,7 +64,7 @@ class TuckerTensorCompletionRunner(object):
         self.train_epsilon = train_epsilon
         
         self.penalty = 0.0001
-        self.num_epochs = 5000
+        self.num_epochs = 1000
         
         self.backtrack_const = backtrack_const
         
@@ -131,11 +131,18 @@ class TuckerTensorCompletionRunner(object):
             self.train_cost_history.append(self.train_cost)
             self.tcs_z_scored_history.append(tcs_z_score)
             self.rse_cost_history.append(rse_cost)
+            
+            self.tsc_score = self.tcs_cost_history[i]
+            self.tcs_z_score = self.tcs_z_scored_history[i]
+            
+            self.save_solution_scans(self.suffix, self.scan_mr_folder)
                                
             self.x_hat = mt.reconstruct2(np.array(rec.numpy()), self.ground_truth, self.mask_indices)
             self.x_hat_img = mt.reconstruct_image_affine_d(self.ground_truth_img, self.x_hat, self.d, self.tensor_shape)
             
-            self.save_solution_scans_iteration(self.suffix, self.scan_mr_iteration_folder, i)
+            if i % 10 == 0:
+                self.save_solution_scans_iteration(self.suffix, self.scan_mr_iteration_folder, i)
+                
             self.logger.info("Len TSC Score History: " + str(len(self.tcs_cost_history)))
             self.save_cost_history()
             
@@ -162,9 +169,6 @@ class TuckerTensorCompletionRunner(object):
         
         self.logger.info("Optimization Completed After Iterations #: " + str(i))
         print("Optimization Completed After Iterations #: " + str(i))
-        
-        self.tsc_score = self.tcs_cost_history[i]
-        self.tcs_z_score = self.tcs_z_scored_history[i]
                      
         self.logger.info("Observed Ratio: " + str(self.observed_ratio))
         self.logger.info("Final TCS Z-Score: " + str(self.tcs_z_score))
