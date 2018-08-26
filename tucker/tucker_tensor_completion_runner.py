@@ -64,7 +64,7 @@ class TuckerTensorCompletionRunner(object):
         self.train_epsilon = train_epsilon
         
         self.penalty = 0.0001
-        self.num_epochs = 1000
+        self.num_epochs = 500
         
         self.backtrack_const = backtrack_const
         
@@ -113,7 +113,7 @@ class TuckerTensorCompletionRunner(object):
                 grad_norm = tl.norm(grad, 2)
                 loss_value = 0.5*cst.frobenius_norm_tf_squared(grad)
                 for f in self.tensor_factors: 
-                    loss_value = loss_value + self.penalty*cst.frobenius_norm_tf(f)
+                    loss_value = loss_value + self.penalty*cst.frobenius_norm_tf_squared(f)
     
             self.cost_history.append(loss_value.numpy())
     
