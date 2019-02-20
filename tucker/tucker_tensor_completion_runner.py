@@ -74,9 +74,11 @@ class TuckerTensorCompletionRunner(object):
         
         self.rse_cost_history = []
         self.train_cost_history = []
+        self.train_adj_cost_history = []
         self.tcs_cost_history = []
         self.tcs_z_scored_history = []
         self.cost_history = []
+        self.grad_history = []
         
         self.scan_mr_folder = self.meta.create_scan_mr_folder(self.missing_ratio)
         self.scan_mr_iteration_folder = self.meta.create_scan_mr_folder_iteration(self.missing_ratio)
@@ -98,7 +100,7 @@ class TuckerTensorCompletionRunner(object):
         self.x_hat_img = mt.reconstruct_image_affine_d(self.ground_truth_img, self.x_hat, self.d, self.tensor_shape)
         
         # save initial solution and cost
-        self.save_solution_scans_iteration(self.suffix, self.scan_mr_iteration_folder, 0)
+        #self.save_solution_scans_iteration(self.suffix, self.scan_mr_iteration_folder, 0)
         self.save_cost_history()
         
         optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
@@ -123,34 +125,41 @@ class TuckerTensorCompletionRunner(object):
 
             self.X = rec * (1 - self.sparsity_mask_tf) + self.X * self.sparsity_mask_tf
             self.train_cost = (cst.frobenius_norm_tf(rec*self.sparsity_mask_tf - self.sparse_observation_tf)/self.norm_sparse_observation).numpy()
+            
+            self.train_adj_cost = self.train_cost/2.0
+            
             rse_cost = (cst.frobenius_norm_tf(rec - self.ground_truth)/cst.frobenius_norm_tf(self.ground_truth)).numpy()
             tsc_score = cst.tsc(np.array(rec.numpy()),self.ground_truth, self.ten_ones, self.mask_indices)
             tcs_z_score = tu.tsc_z_score(np.array(rec.numpy()),self.ground_truth,self.ten_ones, self.mask_indices, self.z_scored_mask)
     
             self.tcs_cost_history.append(tsc_score)
             self.train_cost_history.append(self.train_cost)
+            self.train_adj_cost_history.append(self.train_adj_cost)
+            self.grad_history.append(grad_norm)
+            
+            
             self.tcs_z_scored_history.append(tcs_z_score)
             self.rse_cost_history.append(rse_cost)
             
             self.tsc_score = self.tcs_cost_history[i]
             self.tcs_z_score = self.tcs_z_scored_history[i]
             
-            self.save_solution_scans(self.suffix, self.scan_mr_folder)
+            #self.save_solution_scans(self.suffix, self.scan_mr_folder)
                                
             self.x_hat = mt.reconstruct2(np.array(rec.numpy()), self.ground_truth, self.mask_indices)
             self.x_hat_img = mt.reconstruct_image_affine_d(self.ground_truth_img, self.x_hat, self.d, self.tensor_shape)
             
-            if i % 10 == 0:
-                self.save_solution_scans_iteration(self.suffix, self.scan_mr_iteration_folder, i)
+            #if i % 10 == 0:
+            #    self.save_solution_scans_iteration(self.suffix, self.scan_mr_iteration_folder, i)
                 
             self.logger.info("Len TSC Score History: " + str(len(self.tcs_cost_history)))
             self.save_cost_history()
             
             self.logger.info("Current Iteration #: " + str(i))
             
-            if i >= self.num_epochs:
-                self.logger.info("Maximum # of Iterations exceded. Max Iter: " + str(self.num_epochs))
-                break
+            #if i >= self.num_epochs:
+            #    self.logger.info("Maximum # of Iterations exceded. Max Iter: " + str(self.num_epochs))
+            #    break
     
             if i > 1:
                 diff_train = np.abs(self.train_cost_history[i] - self.train_cost_history[i - 1]) / np.abs(self.train_cost_history[i])
@@ -273,6 +282,12 @@ class TuckerTensorCompletionRunner(object):
         rse_cost_init = cst.relative_error(self.x_init_tcs,self.ground_truth)
         cost_init = cst.compute_loss_np(self.x_init, self.mask_indices, self.sparse_observation)
         
+        train_adjust_cost_init = train_cost_init/2.0
+        grad_norm_init = np.linalg.norm((self.x_init_tcs - self.ground_truth))
+        
+        self.train_adj_cost_history.append(train_adjust_cost_init)
+        self.grad_history.append(grad_norm_init)
+        
         self.train_cost = train_cost_init
         self.rse_cost_history.append(rse_cost_init)
         self.cost_history.append(cost_init)
@@ -364,6 +379,8 @@ class TuckerTensorCompletionRunner(object):
         tsc_z_score_arr = []
         
         rse_arr = []
+        
+        grad_arr = []
 
         counter = 0
         for item in  self.cost_history:
@@ -448,8 +465,45 @@ class TuckerTensorCompletionRunner(object):
         train_output['train_cost'] = train_arr
         
         output_train_df = pd.DataFrame(train_output, index=train_indices)
-        fig_id = 'train_cost' + '_' + self.suffix
-        mrd.save_csv_by_path(output_train_df, results_folder, fig_id)
+        
+        # out put adjust train cost
+        train_adjust_arr = []
+        train_adjust_output = OrderedDict()
+        train_adjust_indices = []
+        counter = 0
+        
+        for item in self.train_adj_cost_history:
+            train_adjust_arr.append(item)
+            train_adjust_indices.append(counter)
+            counter = counter + 1
+
+        train_adjust_output['k'] = train_adjust_indices
+        train_adjust_output['train_cost'] = train_adjust_arr
+        
+        output_train_adjust_df = pd.DataFrame(train_adjust_output, index=train_indices)
+        
+        fig_id = 'train_cost_adj' + '_' + self.suffix
+        mrd.save_csv_by_path(output_train_adjust_df, results_folder, fig_id)
+        
+        # save grad_norm
+        grad_norm_arr = []
+        grad_norm_output = OrderedDict()
+        grad_norm_indices = []
+        counter = 0
+        
+        for item in self.grad_history:
+            grad_norm_arr.append(item)
+            grad_norm_indices.append(counter)
+            counter = counter + 1
+
+        grad_norm_output['k'] = grad_norm_indices
+        grad_norm_output['grad_norm'] = grad_norm_arr
+        
+        grad_norm_df = pd.DataFrame(grad_norm_output, index=train_indices)
+        
+        fig_id = 'train_cost_adj' + '_' + self.suffix
+        mrd.save_csv_by_path(grad_norm_df, results_folder, fig_id)
+        
         
         
         
