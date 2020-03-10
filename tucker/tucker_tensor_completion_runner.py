@@ -1,15 +1,14 @@
 import texfig
-import tensorflow.compat.v1 as tf
-tf.disable_v2_behavior()
-#import tensorflow as tf
+
+import torch
+from torch.autograd import Variable
 import tensorly as tl
-tl.set_backend('tensorflow')
-#import tensorflow as tf
-#import tensorflow as tfe
+from tensorly.tucker_tensor import tucker_to_tensor
+from tensorly.random import check_random_state
+
+tl.set_backend('pytorch')
 
 import numpy as np
-#tf.set_random_seed(0)
-tf.compat.v1.set_random_seed(0)
 np.random.seed(0)
 
 import matplotlib.pyplot as plt
@@ -72,10 +71,6 @@ class TuckerTensorCompletionRunner(object):
         self.num_epochs = 200
         
         self.backtrack_const = backtrack_const
-        tf.compat.v1.reset_default_graph()
-        tf.compat.v1.enable_eager_execution()
-        tf.compat.v1.enable_resource_variables()
-        self.g = tf.compat.v1.get_default_graph()
         self.init()
        
     def init(self):
@@ -110,43 +105,41 @@ class TuckerTensorCompletionRunner(object):
         #self.save_solution_scans_iteration(self.suffix, self.scan_mr_iteration_folder, 0)
         self.save_cost_history()
         
+        lr = 0.001 
         
-        optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=0.001)
+        optimizer = torch.optim.Adam([self.core]+self.tensor_factors, lr=lr)
         
         i = 0
         while self.train_cost > self.epsilon:
     
             i = i + 1
-            with tf.GradientTape() as tape:               
-                self.core1, self.factors1 = tucker(self.X, ranks=[81,81,81,81])
-                rec = tl.tucker_to_tensor(self.core1, self.tensor_factors1)
-                print ("I am here")
-                grad = rec*self.sparsity_mask_tf - self.sparse_observation_tf
-                grad_norm = tl.norm(grad, 2)
-                loss_value = 0.5*cst.frobenius_norm_tf_squared(grad)
-                for f in self.tensor_factors: 
-                    loss_value = loss_value + self.penalty*cst.frobenius_norm_tf_squared(f)
-    
+            optimizer.zero_grad()
+            
+            rec = tl.tucker_to_tensor(self.core, self.tensor_factors)
+            loss_value = 0.5*tl.norm(rec - tensor, 2)
+            
+            grad = rec*self.sparsity_mask_tf - self.sparse_observation_tf
+            grad_norm = tl.norm(grad, 2)
+            log.info("grad norm = " + str(grad_norm.data))
+            
+            for f in self.tensor_factors: 
+                loss_value = loss_value + self.penalty*f.pow(2).sum()
+                
             self.cost_history.append(loss_value.numpy())
-    
-            grads = tape.gradient(loss_value, [self.core] + self.tensor_factors)
-            optimizer.apply_gradients(zip(grads, [self.core] + self.tensor_factors),
-                              global_step=tf.train.get_or_create_global_step())
-
+            
+            loss_value.backward()
+            optimizer.step()
+                  
             self.X = rec * (1 - self.sparsity_mask_tf) + self.X * self.sparsity_mask_tf
-            self.train_cost = (cst.frobenius_norm_tf(rec*self.sparsity_mask_tf - self.sparse_observation_tf)/self.norm_sparse_observation).numpy()
-            
-            self.train_adj_cost = self.train_cost/2.0
-            
+                      
             self.train_cost = min(1.0,(2.0*np.sqrt(loss_value.numpy()) / self.norm_sparse_observation.numpy()))
             
-            rse_cost = (cst.frobenius_norm_tf(rec - self.ground_truth)/cst.frobenius_norm_tf(self.ground_truth)).numpy()
+            rse_cost = ((tl.norm(rec - self.ground_truth,2)/tl.norm(self.ground_truth),2)).numpy()
             tsc_score = cst.tsc(np.array(rec.numpy()),self.ground_truth, self.ten_ones, self.mask_indices)
             tcs_z_score = tu.tsc_z_score(np.array(rec.numpy()),self.ground_truth,self.ten_ones, self.mask_indices, self.z_scored_mask)
     
             self.tcs_cost_history.append(tsc_score)
             self.train_cost_history.append(self.train_cost)
-            self.train_adj_cost_history.append(self.train_adj_cost)
             self.grad_history.append(grad_norm)
             
             
@@ -207,12 +200,7 @@ class TuckerTensorCompletionRunner(object):
         ctx.is_eager = mode == EAGER_MODE
     
     def init_variables(self):
-        #enable_eager_execution()
-        #tf.compat.v1.reset_default_graph()
-        #enable_eager_execution()
-        #tf.compat.v1.enable_eager_execution()
-        #tf.enable_resource_variables()
-        print ("Executing " + str(tf.executing_eagerly()))
+       
         self.title = str(self.d) + "D fMRI Tensor Completion"
         
         self.original_shape = self.ground_truth.shape
@@ -279,11 +267,10 @@ class TuckerTensorCompletionRunner(object):
             
         self.logger.info("Z Score Mask Shape: " + str(self.z_scored_mask.shape))
         
-        with self.g.as_default():
-            self.ground_truth_tf = tf.Variable(tl.tensor(self.ground_truth))
-            self.sparsity_mask_tf = tf.Variable(tl.tensor(self.mask_indices))
-            self.sparse_observation_tf = tf.Variable(tl.tensor(self.sparse_observation))
-            self.ten_ones_tf = tf.Variable(tl.tensor(self.ten_ones))
+        self.ground_truth_tf = tl.tensor(self.ground_truth, requires_grad=False)
+        self.sparsity_mask_tf = tl.tensor(self.mask_indices, requires_grad=False)
+        self.sparse_observation_tf = tl.tensor(self.sparse_observation, requires_grad=False)
+        self.ten_ones_tf = tl.tensor(self.ten_ones, requires_grad=False)
         
         self.logger.info("TF Sparsity Mask Shape: " + str(self.sparsity_mask_tf.shape))
         self.logger.info("TF Sparse Observation Shape: " + str(self.sparse_observation_tf.shape)) 
@@ -316,24 +303,22 @@ class TuckerTensorCompletionRunner(object):
     def create_factor(self, shape):
         factor = (2*np.random.random_sample(shape) - 1).astype('float32')
         norm_ground_factor = np.linalg.norm(factor)
-        factor = tl.tensor(factor * (1./norm_ground_factor))
+        factor = tl.tensor(factor * (1./norm_ground_factor), requires_grad=True)
         return factor
         
     def init_algorithm(self):
-        self.X = tf.Variable(tl.tensor(self.x_init))
-        self.X_old = tf.Variable(tl.tensor(self.x_init))
+        self.X = tl.tensor(self.x_init, requires_grad=True)
         self.X1 = self.x_init
         
         ranks = tu.get_tensor_shape_as_list(self.X)
         
         self.tensor_factors = []
-        with self.g.as_default():
-            for i in range(len(self.X.get_shape()._dims)):
-                item = tf.Variable(self.create_factor((self.X.shape[i] , ranks[i])))
-                self.logger.info("Factor Shape" + str(item.shape))
-                self.tensor_factors.append(item)
+        for i in range(tl.ndim(self.X)):
+            item = self.create_factor((self.X.shape[i] , ranks[i]))
+            self.logger.info("Factor Shape" + str(item.shape))
+            self.tensor_factors.append(item)
             
-            self.core  = tf.Variable(tl.tensor(self.x_init))
+        self.core = tl.tensor(self.x_init, requires_grad=True)
 
         
     def save_solution_scans_iteration(self, suffix, folder, iteration): 
@@ -485,25 +470,6 @@ class TuckerTensorCompletionRunner(object):
         train_output['train_cost'] = train_arr
         
         output_train_df = pd.DataFrame(train_output, index=train_indices)
-        
-        # out put adjust train cost
-        train_adjust_arr = []
-        train_adjust_output = OrderedDict()
-        train_adjust_indices = []
-        counter = 0
-        
-        for item in self.train_adj_cost_history:
-            train_adjust_arr.append(item)
-            train_adjust_indices.append(counter)
-            counter = counter + 1
-
-        train_adjust_output['k'] = train_adjust_indices
-        train_adjust_output['train_cost'] = train_adjust_arr
-        
-        output_train_adjust_df = pd.DataFrame(train_adjust_output, index=train_indices)
-        
-        fig_id = 'train_cost_adj' + '_' + self.suffix
-        mrd.save_csv_by_path(output_train_adjust_df, results_folder, fig_id)
         
         # save grad_norm
         grad_norm_arr = []
