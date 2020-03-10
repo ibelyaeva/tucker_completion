@@ -1,14 +1,11 @@
-import tensorflow as tf
-
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 import numpy as np
-
-tf.set_random_seed(0)
 np.random.seed(0)
 import matplotlib.pyplot as plt
 import metric_util as mt
 import data_util as du
 from nilearn import image
-from skimage.measure import compare_ssim as ssim
 from tensorflow.python.util import nest
 import copy
 from nilearn import plotting
@@ -55,7 +52,7 @@ class TuckerTensorCompletion(object):
         
         self.tensor_shape = tu.get_tensor_shape(self.x_true_data)
         self.max_tt_rank = tu.get_max_rank(self.x_true_reshaped_rank)
-        self.max_tt_rank = 46
+        self.max_tt_rank = 81
         
         self.logger.info("Tensor Shape: " + str(self.tensor_shape) + "; Max Rank: " + str(self.max_tt_rank))
              

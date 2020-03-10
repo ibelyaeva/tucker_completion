@@ -1,6 +1,8 @@
 import tensorflow as tf
 import numpy as np
 import t3f
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 tf.set_random_seed(0)
 np.random.seed(0)
 from t3f import shapes

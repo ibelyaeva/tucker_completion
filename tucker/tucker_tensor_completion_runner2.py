@@ -1,15 +1,13 @@
 import texfig
-import tensorflow.compat.v1 as tf
-tf.disable_v2_behavior()
-#import tensorflow as tf
+import tensorflow as tf
 import tensorly as tl
 tl.set_backend('tensorflow')
 #import tensorflow as tf
 #import tensorflow as tfe
 
 import numpy as np
-#tf.set_random_seed(0)
-tf.compat.v1.set_random_seed(0)
+tf.random.set_seed(0)
+#tf.compat.v1.set_random_seed(0)
 np.random.seed(0)
 
 import matplotlib.pyplot as plt
@@ -39,7 +37,7 @@ from tensorly.random import check_random_state
 import tensorly.backend as T
 
 
-class TuckerTensorCompletionRunner(object):
+class TuckerTensorCompletionRunner2(object):
     
     def __init__(self, ground_truth_img, ground_truth, tensor_shape, x_init, mask_indices, z_scored_mask, 
                  sparse_observation_org,
@@ -72,10 +70,13 @@ class TuckerTensorCompletionRunner(object):
         self.num_epochs = 200
         
         self.backtrack_const = backtrack_const
+        #tf.compat.v1.reset_default_graph()
+        #tf.compat.v1.enable_eager_execution()
+        #tf.enable_resource_variables()
+        #self.g = tf.compat.v1.get_default_graph()
         tf.compat.v1.reset_default_graph()
         tf.compat.v1.enable_eager_execution()
-        tf.compat.v1.enable_resource_variables()
-        self.g = tf.compat.v1.get_default_graph()
+        print(tf.executing_eagerly())
         self.init()
        
     def init(self):
@@ -98,7 +99,7 @@ class TuckerTensorCompletionRunner(object):
         self.init_variables()
 
     def complete(self):
-    
+
         self.logger.info("Starting Tensor Completion. Tensor Dimension:" + str(len(self.ground_truth)) + "; Tensor Shape: " +              str(self.tensor_shape) + "; Max Rank: " + str(self.max_tt_rank) + "; Solution Tolerance (Gradient): " + str(self.epsilon) + "; Convergence Tolerance (Train: )" + str(self.train_epsilon) + "; Factors Penalty: " + str(self.penalty) + "; Max Iterations: " + str(self.num_epochs))
         
         self.init_algorithm()
@@ -110,6 +111,11 @@ class TuckerTensorCompletionRunner(object):
         #self.save_solution_scans_iteration(self.suffix, self.scan_mr_iteration_folder, 0)
         self.save_cost_history()
         
+        #global_step_tensor = tf.Variable(10, trainable=False, name='global_step')
+        # Create a session.
+        #sess = tf.compat.v1.InteractiveSession()
+        # Initialize the variable
+        #sess.run(global_step_tensor.initializer)
         
         optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=0.001)
         
@@ -117,10 +123,8 @@ class TuckerTensorCompletionRunner(object):
         while self.train_cost > self.epsilon:
     
             i = i + 1
-            with tf.GradientTape() as tape:               
-                self.core1, self.factors1 = tucker(self.X, ranks=[81,81,81,81])
-                rec = tl.tucker_to_tensor(self.core1, self.tensor_factors1)
-                print ("I am here")
+            with tf.GradientTape() as tape:
+                rec = tl.tucker_to_tensor((self.core, self.tensor_factors))
                 grad = rec*self.sparsity_mask_tf - self.sparse_observation_tf
                 grad_norm = tl.norm(grad, 2)
                 loss_value = 0.5*cst.frobenius_norm_tf_squared(grad)
@@ -130,8 +134,7 @@ class TuckerTensorCompletionRunner(object):
             self.cost_history.append(loss_value.numpy())
     
             grads = tape.gradient(loss_value, [self.core] + self.tensor_factors)
-            optimizer.apply_gradients(zip(grads, [self.core] + self.tensor_factors),
-                              global_step=tf.train.get_or_create_global_step())
+            optimizer.apply_gradients(zip(grads, [self.core] + self.tensor_factors))
 
             self.X = rec * (1 - self.sparsity_mask_tf) + self.X * self.sparsity_mask_tf
             self.train_cost = (cst.frobenius_norm_tf(rec*self.sparsity_mask_tf - self.sparse_observation_tf)/self.norm_sparse_observation).numpy()
@@ -212,7 +215,7 @@ class TuckerTensorCompletionRunner(object):
         #enable_eager_execution()
         #tf.compat.v1.enable_eager_execution()
         #tf.enable_resource_variables()
-        print ("Executing " + str(tf.executing_eagerly()))
+        #print ("Executing " + str(tf.executing_eagerly()))
         self.title = str(self.d) + "D fMRI Tensor Completion"
         
         self.original_shape = self.ground_truth.shape
@@ -279,11 +282,11 @@ class TuckerTensorCompletionRunner(object):
             
         self.logger.info("Z Score Mask Shape: " + str(self.z_scored_mask.shape))
         
-        with self.g.as_default():
-            self.ground_truth_tf = tf.Variable(tl.tensor(self.ground_truth))
-            self.sparsity_mask_tf = tf.Variable(tl.tensor(self.mask_indices))
-            self.sparse_observation_tf = tf.Variable(tl.tensor(self.sparse_observation))
-            self.ten_ones_tf = tf.Variable(tl.tensor(self.ten_ones))
+        
+        self.ground_truth_tf = tl.tensor(self.ground_truth)
+        self.sparsity_mask_tf = tl.tensor(self.mask_indices)
+        self.sparse_observation_tf = tl.tensor(self.sparse_observation)
+        self.ten_ones_tf = tl.tensor(self.ten_ones)
         
         self.logger.info("TF Sparsity Mask Shape: " + str(self.sparsity_mask_tf.shape))
         self.logger.info("TF Sparse Observation Shape: " + str(self.sparse_observation_tf.shape)) 
@@ -320,20 +323,19 @@ class TuckerTensorCompletionRunner(object):
         return factor
         
     def init_algorithm(self):
-        self.X = tf.Variable(tl.tensor(self.x_init))
-        self.X_old = tf.Variable(tl.tensor(self.x_init))
-        self.X1 = self.x_init
+        self.X = tl.tensor(self.x_init)
+        self.X_old = tl.tensor(self.x_init)
         
         ranks = tu.get_tensor_shape_as_list(self.X)
         
+        
         self.tensor_factors = []
-        with self.g.as_default():
-            for i in range(len(self.X.get_shape()._dims)):
-                item = tf.Variable(self.create_factor((self.X.shape[i] , ranks[i])))
-                self.logger.info("Factor Shape" + str(item.shape))
-                self.tensor_factors.append(item)
+        for i in range(len(self.X.get_shape()._dims)):
+            item = self.create_factor((self.X.shape[i] , ranks[i]))
+            self.logger.info("Factor Shape" + str(item.shape))
+            self.tensor_factors.append(item)
             
-            self.core  = tf.Variable(tl.tensor(self.x_init))
+        self.core  = tl.tensor(self.x_init)
 
         
     def save_solution_scans_iteration(self, suffix, folder, iteration): 

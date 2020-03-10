@@ -1,6 +1,7 @@
 import texfig
-import tensorflow as tf
-import tensorflow.contrib.eager as tfe
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+
 import tensorly as tl
 
 import nilearn
@@ -52,6 +53,7 @@ def complete_random_4D():
     for i in range(n):
         observed_ratio_list = [0.9, 0.8, 0.7, 0.6, 0.65, 0.5, 0.4, 0.35, 0.3, 0.2, 0.1]
     #observed_ratio_list = [0.75,0.25]
+        observed_ratio_list = [0.5]
         solution_dir, movies_folder, images_folder, results_folder, reports_folder, scans_folder, scans_folder_final, scans_folder_iteration = meta.init_meta_data(root_dir)
     
     

@@ -14,7 +14,6 @@ from nilearn.datasets import MNI152_FILE_PATH
 from sklearn.model_selection import train_test_split
 from nibabel.affines import apply_affine
 from nilearn.image.resampling import coord_transform, get_bounds, get_mask_bounds
-from skimage.draw import ellipsoid
 from nilearn.image import resample_img
 from nilearn.masking import compute_background_mask
 import ellipsoid_mask as elm
@@ -30,8 +29,9 @@ ellipsoid_mask2_path = "size_20_11_25.nii"
 ellipsoid_mask3_path = "size_35_20_25.nii"
 
 def get_folder_subject1():
-    folder_path_subject1 = "/home/ec2-user/analysis/data/subject1"
+    folder_path_subject1 = "/pl/mlsp/data/subjects/subject1"
     return folder_path_subject1
+
 
 def corrupted4D_10_frames_path():
     path = "/work/pl/sch/analysis/results/masked_images/d4/10/subject1_10.nii"
@@ -46,7 +46,7 @@ def corrupted4D_50_frames_path():
     return path
 
 def get_path_subject1():
-    data_path_subject1   = "swaAMAYER+cobre01_63001+M87100944+20110309at135133+RSTpre_V01_R01+CM.nii"
+    data_path_subject1   = "cobre.nii"
     return data_path_subject1
 
 def get_full_path_subject1():
