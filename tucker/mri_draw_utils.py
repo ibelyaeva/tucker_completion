@@ -111,10 +111,11 @@ def draw_original_vs_reconstructed_rim_z_score(x_true_img, x_hat_img, x_miss_img
     print ("Missing Ratio Str:" + missing_ratio_str)                          
  
     relative_error_str = "{0:.5f}".format(relative_error) 
-    relative_error_str = mf.format_number(relative_error, fmt='%1.2e')
+    #relative_error_str = mf.format_number(relative_error, fmt='%1.2e')
     
-    tsc_str = mf.format_number(tcs, fmt='%1.2e')
-    tsc_z_score_str = mf.format_number(tcs_z_score, fmt='%1.2e')
+    #tsc_str = mf.format_number(tcs, fmt='%1.2e')
+    tsc_str = str(1)
+    tsc_z_score_str =str(1)
     z_score_str = str(z_score)
                 
     true_image = plotting.plot_epi(x_true_img, annotate=False, bg_img=None,black_bg=True, figure= fig, axes = main_ax, cmap='jet', cut_coords=coord)     
@@ -130,7 +131,7 @@ def draw_original_vs_reconstructed_rim_z_score(x_true_img, x_hat_img, x_miss_img
     recov_ax = fig.add_subplot(grid[2, 0], sharex=main_ax)
     recov_ax.set_xlabel('(c)', color=bg_color)
     
-    recov_ax.set_title('Completed. ' + " " + str("TCS: ") + tsc_str + " TCS(Z_Score >" + z_score_str + "): "  + tsc_z_score_str, color=fg_color, fontweight='normal', fontsize=8)
+    recov_ax.set_title('Completed. ' + " " + str("TCS: ") + tsc_str + " TCS(Z Score" + z_score_str + "): "  + tsc_z_score_str, color=fg_color, fontweight='normal', fontsize=8)
     
     recovered_image = plotting.plot_epi(x_hat_img, annotate=False, bg_img=None,black_bg=True, figure= fig, axes = recov_ax, cmap='jet', cut_coords=coord)       
     

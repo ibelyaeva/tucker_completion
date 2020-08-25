@@ -2,7 +2,6 @@ import tensorflow as tf
 import numpy as np
 import t3f
 
-tf.set_random_seed(0)
 np.random.seed(0)
 from t3f import shapes
 from t3f import ops

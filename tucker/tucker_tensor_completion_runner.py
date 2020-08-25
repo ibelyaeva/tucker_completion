@@ -1,10 +1,9 @@
-import texfig
-
 import torch
 from torch.autograd import Variable
 import tensorly as tl
 from tensorly.tucker_tensor import tucker_to_tensor
 from tensorly.random import check_random_state
+import time
 
 tl.set_backend('pytorch')
 
@@ -81,6 +80,7 @@ class TuckerTensorCompletionRunner(object):
         self.tcs_z_scored_history = []
         self.cost_history = []
         self.grad_history = []
+        self.elapsed_time = []
         
         self.scan_mr_folder = self.meta.create_scan_mr_folder(self.missing_ratio)
         self.scan_mr_iteration_folder = self.meta.create_scan_mr_folder_iteration(self.missing_ratio)
@@ -98,11 +98,15 @@ class TuckerTensorCompletionRunner(object):
         
         self.init_algorithm()
         
-        self.x_hat = mt.reconstruct2(np.array(self.X.numpy()), self.ground_truth, self.mask_indices)
+        self.x_hat = mt.reconstruct2(np.array(self.X.data), self.ground_truth, self.mask_indices)
         self.x_hat_img = mt.reconstruct_image_affine_d(self.ground_truth_img, self.x_hat, self.d, self.tensor_shape)
+        start = time.time()
         
         # save initial solution and cost
         #self.save_solution_scans_iteration(self.suffix, self.scan_mr_iteration_folder, 0)
+        elapsed_time = time.time()- start
+        self.elapsed_time.append(elapsed_time)
+        
         self.save_cost_history()
         
         lr = 0.001 
@@ -110,33 +114,36 @@ class TuckerTensorCompletionRunner(object):
         optimizer = torch.optim.Adam([self.core]+self.tensor_factors, lr=lr)
         
         i = 0
-        while self.train_cost > self.epsilon:
+        self.grad_norm_val = self.grad_norm_init
+        max_iter = 500
+        while (i <= max_iter):
     
             i = i + 1
             optimizer.zero_grad()
             
-            rec = tl.tucker_to_tensor(self.core, self.tensor_factors)
-            loss_value = 0.5*tl.norm(rec - tensor, 2)
-            
+            rec = tl.tucker_to_tensor((self.core, self.tensor_factors))
             grad = rec*self.sparsity_mask_tf - self.sparse_observation_tf
+            loss_value = 0.5*tl.norm(grad, 2).pow(2)
+            
             grad_norm = tl.norm(grad, 2)
-            log.info("grad norm = " + str(grad_norm.data))
+            self.grad_norm_val = np.array(grad_norm.data)
+            self.logger.info("grad norm = " + str(np.array(grad_norm.data)))
             
             for f in self.tensor_factors: 
                 loss_value = loss_value + self.penalty*f.pow(2).sum()
                 
-            self.cost_history.append(loss_value.numpy())
+            self.cost_history.append(loss_value.data)
             
             loss_value.backward()
             optimizer.step()
                   
             self.X = rec * (1 - self.sparsity_mask_tf) + self.X * self.sparsity_mask_tf
                       
-            self.train_cost = min(1.0,(2.0*np.sqrt(loss_value.numpy()) / self.norm_sparse_observation.numpy()))
+            self.train_cost = min(1.0,(2.0*np.sqrt(loss_value.data / self.norm_sparse_observation)))
             
-            rse_cost = ((tl.norm(rec - self.ground_truth,2)/tl.norm(self.ground_truth),2)).numpy()
-            tsc_score = cst.tsc(np.array(rec.numpy()),self.ground_truth, self.ten_ones, self.mask_indices)
-            tcs_z_score = tu.tsc_z_score(np.array(rec.numpy()),self.ground_truth,self.ten_ones, self.mask_indices, self.z_scored_mask)
+            rse_cost = np.linalg.norm(np.array(rec.data) - self.ground_truth)/np.linalg.norm(self.ground_truth)
+            tsc_score = cst.tsc(np.array(rec.data),self.ground_truth, self.ten_ones, self.mask_indices)
+            tcs_z_score = tu.tsc_z_score(np.array(rec.data),self.ground_truth,self.ten_ones, self.mask_indices, self.z_scored_mask)
     
             self.tcs_cost_history.append(tsc_score)
             self.train_cost_history.append(self.train_cost)
@@ -149,15 +156,19 @@ class TuckerTensorCompletionRunner(object):
             self.tsc_score = self.tcs_cost_history[i]
             self.tcs_z_score = self.tcs_z_scored_history[i]
             
-            #self.save_solution_scans(self.suffix, self.scan_mr_folder)
+            self.save_solution_scans(self.suffix, self.scan_mr_folder)
                                
-            self.x_hat = mt.reconstruct2(np.array(rec.numpy()), self.ground_truth, self.mask_indices)
+            self.x_hat = mt.reconstruct2(np.array(rec.data), self.ground_truth, self.mask_indices)
             self.x_hat_img = mt.reconstruct_image_affine_d(self.ground_truth_img, self.x_hat, self.d, self.tensor_shape)
             
             #if i % 10 == 0:
             #    self.save_solution_scans_iteration(self.suffix, self.scan_mr_iteration_folder, i)
                 
             self.logger.info("Len TSC Score History: " + str(len(self.tcs_cost_history)))
+            
+            elapsed_time = time.time()- start
+            self.elapsed_time.append(elapsed_time)
+            
             self.save_cost_history()
             
             self.logger.info("Current Iteration #: " + str(i))
@@ -168,16 +179,14 @@ class TuckerTensorCompletionRunner(object):
     
             if i > 1:
                 diff_train = np.abs(self.train_cost_history[i] - self.train_cost_history[i - 1]) / np.abs(self.train_cost_history[i])
-                self.logger.info("Epoch: " + str(i) + "; GradNorm: " + str(grad_norm) +  "; Diff Train: " + str(diff_train)  + "; Loss: " + str(loss_value.numpy())  + "; Train Cost: " + str(self.train_cost) + "; TCS Score: " + str(tsc_score)  + "; TCS Z Score: " 
+                self.logger.info("Epoch: " + str(i) + "; GradNorm: " + str(grad_norm.data) +  "; Diff Train: " + str(diff_train)  + "; Loss: " + str(loss_value.data)  + "; Train Cost: " + str(self.train_cost) + "; TCS Score: " + str(tsc_score)  + "; TCS Z Score: " 
                                   + str(tcs_z_score) + "; RSE Cost: " + str(rse_cost))
         
-                if diff_train <= self.train_epsilon:
-                    self.logger.info("Optimization Completed. Breaking after " + str(i) + " iterations" + "; Reason Relative Tolerance of Training Iterations Exceeded Trheshold: " + str(self.train_epsilon))
-                    break
     
             else:
-                self.logger.info("Epoch: " + str(i) + "; GradNorm: " + str(grad_norm) +  "; Loss: " + str(loss_value)  + "; Train Cost: " + str(self.train_cost) + "; TCS Score: " + str(tsc_score)  + "; TCS Z Score: " 
+                self.logger.info("Epoch: " + str(i) + "; GradNorm: " + str(grad_norm.data) +  "; Loss: " + str(loss_value.data)  + "; Train Cost: " + str(self.train_cost) + "; TCS Score: " + str(tsc_score)  + "; TCS Z Score: " 
                                   + str(tcs_z_score) + "; RSE Cost: " + str(rse_cost))
+                
 
             
         
@@ -282,16 +291,16 @@ class TuckerTensorCompletionRunner(object):
         self.init_cost()
         
     def init_cost(self):
-        train_cost_init = cst.relative_error_omega(self.x_init_tcs, self.ground_truth, self.sparse_observation)
-        tcs_z_score_init = tu.tsc_z_score(self.x_init_tcs,self.ground_truth,self.ten_ones, self.mask_indices, self.z_scored_mask)
-        rse_cost_init = cst.relative_error(self.x_init_tcs,self.ground_truth)
-        cost_init = cst.compute_loss_np(self.x_init, self.mask_indices, self.sparse_observation)
+        train_cost_init = min(1.0, cst.relative_error_omega(self.x_init_tcs, self.ground_truth, self.sparse_observation))
+        tcs_z_score_init = min(1.0, tu.tsc_z_score(self.x_init_tcs,self.ground_truth,self.ten_ones, self.mask_indices, self.z_scored_mask))
+        rse_cost_init = min(1.0, cst.relative_error(self.x_init_tcs,self.ground_truth))
+        cost_init = min(1.0, cst.compute_loss_np(self.x_init_tcs, self.mask_indices, self.sparse_observation))
         
         train_adjust_cost_init = train_cost_init/2.0
-        grad_norm_init = np.linalg.norm((self.x_init_tcs - self.ground_truth))
+        self.grad_norm_init = np.linalg.norm((self.x_init_tcs - self.ground_truth))
         
         self.train_adj_cost_history.append(train_adjust_cost_init)
-        self.grad_history.append(grad_norm_init)
+        self.grad_history.append(self.grad_norm_init)
         
         self.train_cost = train_cost_init
         self.rse_cost_history.append(rse_cost_init)
@@ -487,8 +496,26 @@ class TuckerTensorCompletionRunner(object):
         
         grad_norm_df = pd.DataFrame(grad_norm_output, index=train_indices)
         
-        fig_id = 'train_cost_adj' + '_' + self.suffix
+        fig_id = 'grad_norm' + '_' + self.suffix
         mrd.save_csv_by_path(grad_norm_df, results_folder, fig_id)
+        
+        elapsed_time_arr = []
+        elapsed_time_output = OrderedDict()
+        elapsed_time_indices = []
+        counter = 0
+        
+        for item in self.elapsed_time:
+            elapsed_time_arr.append(item)
+            elapsed_time_indices.append(counter)
+            counter = counter + 1
+
+        elapsed_time_output['k'] = elapsed_time_indices
+        elapsed_time_output['elapsed_time'] = elapsed_time_arr
+        
+        elapsed_time_df = pd.DataFrame(elapsed_time_output, index=train_indices)
+        
+        fig_id = 'elapsed_time' + '_' + self.suffix
+        mrd.save_csv_by_path(elapsed_time_df, results_folder, fig_id)
         
         
         
