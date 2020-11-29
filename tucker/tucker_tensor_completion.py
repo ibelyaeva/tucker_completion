@@ -19,10 +19,13 @@ import time
 import tensor_util as tu
 import cost_computation as cst
 import tucker_tensor_completion_runner as tuck_rt
+import os
+import file_service as fs
+from collections import OrderedDict
 
 class TuckerTensorCompletion(object):
     
-    def __init__(self, data_path, observed_ratio, d, n, logger, meta, z_score = 2):
+    def __init__(self, data_path, observed_ratio, d, n, logger, meta,  subject_meta_folder, z_score = 2):
         self.observed_ratio = observed_ratio
         self.missing_ratio = 1.0 - self.observed_ratio
         self.d = d
@@ -30,14 +33,37 @@ class TuckerTensorCompletion(object):
         self.logger = logger
         self.meta = meta
         self.z_score = z_score
+        
+        self.subject_meta_folder = subject_meta_folder
+        self.subject_folder_name = None
+        self.subject_name = None
+        
         self.init_cost_history()
         self.init_dataset(data_path)
         
     def init_dataset(self, path):
         self.x_true_img = mt.read_image_abs_path(path)
+        self.subject_name = du.get_parent_name(path)
         
         #if self.d==3:
         #    self.x_true_img = image.index_img(self.x_true_img, self.n)
+        
+        if self.subject_meta_folder is not None:
+            self.subject_folder_name = os.path.join(self.subject_meta_folder, self.subject_name)
+            self.logger.info("Subject Folder Name: " + self.subject_folder_name)
+            fs.ensure_dir(self.subject_folder_name)
+            
+            #save subject name
+            subject = {}
+            subject['subject_name'] = str(self.subject_name)
+            subject['folder'] = str(self.subject_folder_name)
+            subject_df = pd.DataFrame()
+            
+            
+            subject_df.append(subject, ignore_index=True)
+            
+            fig_id = 'subject' + '_' +  self.meta.get_suffix(self.missing_ratio)
+            mrd.save_csv_by_path(subject_df, self.meta.results_folder, fig_id) 
         
         self.x_true_data = np.array(self.x_true_img.get_data())
         self.x_true_reshaped = copy.deepcopy(self.x_true_data)
@@ -50,7 +76,7 @@ class TuckerTensorCompletion(object):
         
         self.tensor_shape = tu.get_tensor_shape(self.x_true_data)
         self.max_tt_rank = tu.get_max_rank(self.x_true_reshaped_rank)
-        self.max_tt_rank = 81
+        self.max_tt_rank = 46
         
         self.logger.info("Tensor Shape: " + str(self.tensor_shape) + "; Max Rank: " + str(self.max_tt_rank))
              
@@ -150,7 +176,7 @@ class TuckerTensorCompletion(object):
                                                     self.max_tt_rank, 
                                                     self.observed_ratio,
                                                     self.epsilon, self.train_epsilon,
-                                                    self.backtrack_const, self.logger, self.meta, self.d, self.z_score,
+                                                    self.backtrack_const, self.logger, self.meta, self.d, self.subject_folder_name, self.z_score,
                                                     )
         self.rtc_runner.complete()
     

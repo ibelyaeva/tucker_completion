@@ -28,6 +28,59 @@ ellipsoid_mask1_path = "size_20_7_15.nii"
 ellipsoid_mask2_path = "size_20_11_25.nii"
 ellipsoid_mask3_path = "size_35_20_25.nii"
 
+def get_parent_name(file_path):
+    current_dir_name = os.path.split(os.path.dirname(file_path))[1]
+    return current_dir_name
+
+def get_subjects(root_dir):
+    subject_list = []
+    for root,d_names,f_names in os.walk(root_dir):
+        for f in f_names:
+            if f.startswith("swa"):
+                file_path = os.path.join(root, f)
+                subject_list.append(file_path)
+    return subject_list
+
+def delete_volumes(file_path, scan_number):
+       
+    corrupted_volumes_list_scan_numbers = []
+    replaced_frames = {}
+
+    x_img = mt.read_image_abs_path(file_path)
+    counter = 0    
+    included_volumes_count = 0
+    volumes_list = []
+
+    for img in image.iter_img(x_img):
+        print ("Volume Index: " + str(counter))
+        if counter in scan_number:
+            print ("Skipping volume: " + str(counter))
+        else:
+            print ("Adding volume to the list " + str(counter))
+            volumes_list.append(img)
+            included_volumes_count = included_volumes_count + 1
+        counter = counter + 1
+       
+    x_img = image.concat_imgs(volumes_list)
+    print ("Total Included Volumes = " + str(included_volumes_count) + "; Final Image = " + str(x_img.get_data().shape))
+    return x_img
+
+def delete_frames(file_path):
+
+    scans = [0, 1, 2, 3, 4, 5]
+    x_img = mt.read_image_abs_path(file_path)
+    x_img_data = np.array(x_img.get_data())
+    ts_count = x_img_data.shape[3]
+    print(x_img)
+    
+    if (ts_count) > 144:
+        print ("removing uncalibrated volumes " + file_path)
+        x_updated_img = delete_volumes(file_path, scans)
+        nib.save(x_updated_img , file_path)
+    else:
+        print ("skipping uncalibrated volumes")
+
+
 def get_folder_subject1():
     folder_path_subject1 = "/pl/mlsp/data/subjects/subject1"
     return folder_path_subject1

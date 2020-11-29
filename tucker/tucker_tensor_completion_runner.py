@@ -43,7 +43,7 @@ class TuckerTensorCompletionRunner(object):
                  sparse_observation_org,
                  norm_sparse_observation,
                  x_init_tcs,
-                 ten_ones, max_tt_rank, observed_ratio, epsilon, train_epsilon, backtrack_const, logger, meta, d, z_score = 2):
+                 ten_ones, max_tt_rank, observed_ratio, epsilon, train_epsilon, backtrack_const, logger, meta, d, subject_folder = None, z_score = 2):
         
         self.ground_truth_img = ground_truth_img
         self.ground_truth = ground_truth
@@ -70,6 +70,7 @@ class TuckerTensorCompletionRunner(object):
         self.num_epochs = 200
         
         self.backtrack_const = backtrack_const
+        self.subject_folder = subject_folder
         self.init()
        
     def init(self):
@@ -115,7 +116,7 @@ class TuckerTensorCompletionRunner(object):
         
         i = 0
         self.grad_norm_val = self.grad_norm_init
-        max_iter = 500
+        max_iter = 200
         while (i <= max_iter):
     
             i = i + 1
@@ -361,26 +362,37 @@ class TuckerTensorCompletionRunner(object):
         x_hat_path = os.path.join(folder,"x_hat_img_" + str(suffix))
         x_miss_path = os.path.join(folder,"x_miss_img_" + str(suffix))
         
+        x_true_path_f = os.path.join(self.subject_folder,"x_true_img_" + str(suffix))
+        x_hat_path_f = os.path.join(self.subject_folder,"x_hat_img_" + str(suffix))
+        x_miss_path_f = os.path.join(self.subject_folder,"x_miss_img_" + str(suffix))
+        
         self.logger.info("x_hat_path: " + str(x_hat_path))
-        nib.save(self.x_hat_img, x_hat_path)
+        #nib.save(self.x_hat_img, x_hat_path)
+        nib.save(self.x_hat_img, x_hat_path_f)
             
         self.logger.info("x_miss_path: " + str(x_miss_path))
-        nib.save(self.x_miss_img, x_miss_path)
+        #nib.save(self.x_miss_img, x_miss_path)
+        nib.save(self.x_miss_img, x_miss_path_f)
             
         self.logger.info("x_true_path: " + str(x_true_path))
-        nib.save(self.ground_truth_img, x_true_path)
+        #nib.save(self.ground_truth_img, x_true_path)
+        nib.save(self.ground_truth_img, x_true_path_f)
         
-        mrd.draw_original_vs_reconstructed_rim_z_score(image.index_img(self.ground_truth_img, 0), image.index_img(self.x_hat_img,0), image.index_img(self.x_miss_img, 0), self.title,
-                    self.tsc_score, self.observed_ratio, self.tsc_score, self.tcs_z_score, 2, coord=None, folder=self.images_folder, iteration = -1, time=0)
         
-        mrd.draw_original_vs_reconstructed_rim_z_score(image.index_img(self.ground_truth_img, 69), image.index_img(self.x_hat_img,69), image.index_img(self.x_miss_img, 69), self.title,
+        
+        #mrd.draw_original_vs_reconstructed_rim_z_score(image.index_img(self.ground_truth_img, 0), image.index_img(self.x_hat_img,0), image.index_img(self.x_miss_img, 0), self.title,
+        #            self.tsc_score, self.observed_ratio, self.tsc_score, self.tcs_z_score, 2, coord=None, folder=self.images_folder, iteration = -1, time=0)
+        
+        try:
+            mrd.draw_original_vs_reconstructed_rim_z_score(image.index_img(self.ground_truth_img, 69), image.index_img(self.x_hat_img,69), image.index_img(self.x_miss_img, 69), self.title,
                     self.tsc_score, self.observed_ratio, self.tsc_score, self.tcs_z_score, 2, coord=None, folder=self.images_folder, iteration = -1, time=69)
+        except:
+            self.logger.info("Error on image save") 
+        #mrd.draw_original_vs_reconstructed_rim_z_score(image.index_img(self.ground_truth_img, 119), image.index_img(self.x_hat_img,119), image.index_img(self.x_miss_img, 119), self.title,
+         #           self.tsc_score, self.observed_ratio, self.tsc_score, self.tcs_z_score, 2, coord=None, folder=self.images_folder, iteration = -1, time = 119)
         
-        mrd.draw_original_vs_reconstructed_rim_z_score(image.index_img(self.ground_truth_img, 119), image.index_img(self.x_hat_img,119), image.index_img(self.x_miss_img, 119), self.title,
-                    self.tsc_score, self.observed_ratio, self.tsc_score, self.tcs_z_score, 2, coord=None, folder=self.images_folder, iteration = -1, time = 119)
-        
-        mrd.draw_original_vs_reconstructed_rim_z_score(image.index_img(self.ground_truth_img, 143), image.index_img(self.x_hat_img,143), image.index_img(self.x_miss_img, 143), self.title,
-                    self.tsc_score, self.observed_ratio, self.tsc_score, self.tcs_z_score, 2, coord=None, folder=self.images_folder, iteration = -1, time=143)
+        #mrd.draw_original_vs_reconstructed_rim_z_score(image.index_img(self.ground_truth_img, 143), image.index_img(self.x_hat_img,143), image.index_img(self.x_miss_img, 143), self.title,
+         #           self.tsc_score, self.observed_ratio, self.tsc_score, self.tcs_z_score, 2, coord=None, folder=self.images_folder, iteration = -1, time=143)
         
         
     def save_cost_history(self):

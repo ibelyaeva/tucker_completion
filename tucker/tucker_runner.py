@@ -44,19 +44,50 @@ config = config
 def complete_random_4D():
     subject_scan_path = du.get_full_path_subject1()
     meta = mdt.Metadata('random', 4)
-    root_dir = config.get('log', 'scratch.tucker.dir4D')
+    #root_dir = config.get('log', 'scratch.tucker.dir4D')
+    root_dir = config.get('log', 'scratch.tucker.dir4Dmulti')
+    #subject_meta_folder = fs.create_meta_directory(root_dir, "random")
+    subject_meta_folder = "/work/scratch/tensor_completion/4D/tucker/multisubject/meta_subject2020-08-25_00_51_13/random"
     
-    n = 10
+    n = 1
     for i in range(n):
         observed_ratio_list = [0.9, 0.8, 0.7, 0.6, 0.65, 0.5, 0.4, 0.35, 0.3, 0.2, 0.1]
     #observed_ratio_list = [0.75,0.25]
         observed_ratio_list = [0.5]
-        solution_dir, movies_folder, images_folder, results_folder, reports_folder, scans_folder, scans_folder_final, scans_folder_iteration = meta.init_meta_data(root_dir)
+        #solution_dir, movies_folder, images_folder, results_folder, reports_folder, scans_folder, scans_folder_final, scans_folder_iteration = meta.init_meta_data(root_dir)
     
+    observed_ratio_list = [0.5]
+    subjects_root_dir = "/pl/mlsp/data/cobre/subjects/"
+    subject_list = du.get_subjects(subjects_root_dir)
     
-    for item in observed_ratio_list:
-        current_runner = ct.TuckerTensorCompletion(subject_scan_path, item, 4, 1, meta.logger, meta)
-        current_runner.complete()
+    subject_count = 0
+    for subject_scan_path in subject_list:
+        print(subject_scan_path)
+        subject_count = subject_count + 1
+        if subject_count > 67:
+            break
+        print ("Subject Count = " + str(subject_count))
+        print("Processing Subject: " + str(subject_scan_path))
+        
+        subject_name= du.get_parent_name(subject_scan_path)   
+        subject_meta_path = os.path.join(subject_meta_folder, subject_name)
+        
+        print ("Subject Name:" + subject_name  + "; Subject Metapath:" + subject_meta_path)
+        
+        accept_subject = False
+        if os.path.exists(subject_meta_path):
+            print ("Subject already exists!. Skip Processing." + subject_name + "; " + subject_scan_path)
+            accept_subject = False
+        else:
+            print ("Accept subject." + subject_name)
+            accept_subject = True
+        
+        du.delete_frames(subject_scan_path)
+        if accept_subject:
+            for item in observed_ratio_list:
+                solution_dir, movies_folder, images_folder, results_folder, reports_folder, scans_folder, scans_folder_final, scans_folder_iteration = meta.init_meta_data(root_dir)
+                current_runner = ct.TuckerTensorCompletion(subject_scan_path, item, 4, 1, meta.logger, meta, subject_meta_folder)
+                current_runner.complete()
     
         
 if __name__ == "__main__":
